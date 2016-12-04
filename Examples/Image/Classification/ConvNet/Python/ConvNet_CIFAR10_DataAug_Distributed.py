@@ -13,9 +13,15 @@ import cntk
 import _cntk_py
 
 from cntk.utils import *
-from cntk.distributed import data_parallel_distributed_learner, Communicator
+from cntk.layers import *
+from cntk.models import Sequential, LayerStack
+from cntk.ops import input_variable, cross_entropy_with_softmax, classification_error, relu, element_times, constant
+from cntk.io import MinibatchSource, ImageDeserializer, StreamDef, StreamDefs
+from cntk import Trainer, persist, cntk_py, distributed
+from cntk.learner import momentum_sgd, learning_rate_schedule, momentum_schedule, momentum_as_time_constant_schedule, UnitType
+from _cntk_py import set_computation_network_trace_level
 
-# default Paths relative to current python file.
+# Paths relative to current python file.
 abs_path   = os.path.dirname(os.path.abspath(__file__))
 data_path  = os.path.join(abs_path, "..", "..", "..", "DataSets", "CIFAR-10")
 model_path = os.path.join(abs_path, "Models")
@@ -27,8 +33,8 @@ image_width  = 32
 num_channels = 3  # RGB
 num_classes  = 10
 
-# Create a minibatch source.
-def create_image_mb_source(map_file, mean_file, train, total_number_of_samples):
+# Define the reader for both training and evaluation action.
+def create_reader(map_file, mean_file, train, distributed_after=2147483648):
     if not os.path.exists(map_file) or not os.path.exists(mean_file):
         raise RuntimeError("File '%s' or '%s' does not exist. Please run install_cifar10.py from DataSets/CIFAR-10 to fetch them" %
                            (map_file, mean_file))
@@ -172,23 +178,9 @@ def convnet_cifar10_dataaug(train_data, test_data, mean_data, num_quantization_b
  
 
 if __name__=='__main__':
-    
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument('-datadir', help='only interested in changes to that file');
-    parser.add_argument('-logdir', help='only interested in changes by that user');
-    parser.add_argument('-outputdir',  help='go straight to provided changelist');
-
-    args = vars(parser.parse_args())
-
-    if args['datadir'] != None:
-        data_path = args['datadir']
-
-    if args['logdir'] != None:
-        log_dir = args['logdir']
-
-    if args['outputdir'] != None:
-        model_path = args['outputdir'] + "/models"
+    distributed_after_samples = 0
+    num_quantization_bits = 32
+    distributed_trainer = distributed.data_parallel_distributed_trainer(communicator=cntk_py.mpicommunicator(), use_async_buffered_parameter_update=False)
 
     mean_data=os.path.join(data_path, 'CIFAR-10_mean.xml')
     train_data=os.path.join(data_path, 'train_map.txt')
